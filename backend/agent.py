@@ -10,10 +10,9 @@ import os
 from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
-from google import genai
 from google.genai import errors, types
 
-from backend.retrieval import TOP_K, Chunk, format_context, retrieve
+from backend.retrieval import TOP_K, Chunk, format_context, get_client, retrieve
 
 load_dotenv()
 
@@ -185,25 +184,8 @@ def classify_api_error(exc: errors.APIError) -> ApiFailure:
     )
 
 
-@functools.lru_cache(maxsize=1)
-def _client() -> genai.Client:
-    """Gemini client keyed from GEMINI_API_KEY in the environment or .env.
-
-    Cached: a Client closes its HTTP transport when garbage collected, so a
-    throwaway `_client().models...` can have its connection closed out from
-    under the in-flight request. One cached instance also reuses connections.
-
-    The key is passed explicitly rather than left to the SDK's own lookup so a
-    missing key fails here with a clear message, and so a stray GOOGLE_API_KEY
-    cannot silently take precedence.
-    """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. Copy .env.example to .env and add your "
-            "key from https://aistudio.google.com/apikey"
-        )
-    return genai.Client(api_key=api_key)
+# One shared client for embedding and answering, defined in retrieval.
+_client = get_client
 
 
 def build_prompt(question: str, chunks: list[Chunk]) -> str:

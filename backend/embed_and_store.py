@@ -18,7 +18,7 @@ import hashlib
 from pathlib import Path
 
 from backend.ingest import SUPPORTED_SUFFIXES, Chunk, chunk_document, read_document
-from backend.retrieval import DATA_DIR, embed, get_collection
+from backend.retrieval import DATA_DIR, embed_documents, get_collection
 
 # Rows per collection.add call. Keeps peak memory bounded on large PDFs while
 # still giving sentence-transformers a batch big enough to be worth the call.
@@ -75,10 +75,10 @@ def store_chunks(source: str, chunks: list[Chunk], replace: bool = True) -> int:
                 for offset, chunk in enumerate(batch)
             ],
             documents=texts,
-            # Embeddings come from retrieval.embed - the same model and the
-            # same normalization used at query time. Embedding documents with
-            # one model and questions with another silently destroys recall.
-            embeddings=embed(texts),
+            # Same model as query time, but task_type RETRIEVAL_DOCUMENT
+            # rather than RETRIEVAL_QUERY - the asymmetry is intentional and
+            # improves recall. Both are normalized identically.
+            embeddings=embed_documents(texts),
             metadatas=[
                 build_metadata(source, start + offset, chunk)
                 for offset, chunk in enumerate(batch)

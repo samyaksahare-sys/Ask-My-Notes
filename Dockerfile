@@ -27,37 +27,39 @@ RUN apt-get update \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/opt/huggingface
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Bake the embedding model so the first request does not stall on a download.
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
-
 COPY backend/ ./backend/
 COPY --from=ui /ui/dist ./backend/static
 
-# Build the vector index INTO the image. A demo has a fixed corpus, so a
-# read-only prebuilt index removes the need for a persistent disk entirely --
-# the single hardest requirement to satisfy on a free tier.
+# Ship the prebuilt index rather than building it here. A demo corpus is fixed,
+# so a committed read-only index means the build needs no API key, no network,
+# and no persistent disk at runtime -- the hardest free-tier requirement, gone.
+# Regenerate after editing demo-notes/ with:
+#   DATA_DIR=$PWD/demo-notes CHROMA_DIR=$PWD/demo-index \
+#     python -m backend.embed_and_store --reset
 COPY demo-notes/ ./backend/data/
-RUN python -m backend.embed_and_store && python -c "\
+COPY demo-index/ ./backend/chroma/
+
+# Fail the build loudly if the shipped index is empty or unreadable, rather
+# than deploying a container that answers every question with "no notes".
+RUN python -c "\
 from backend.retrieval import get_collection; \
 n = get_collection().count(); \
-print(f'baked index: {n} chunks'); \
-assert n > 0, 'demo corpus produced no chunks - build aborted'"
+print(f'shipped index: {n} chunks'); \
+assert n > 0, 'demo index is empty - build aborted'"
 
 # Hugging Face Spaces runs containers as UID 1000, not root. Chroma opens its
 # SQLite store read-write even for queries (WAL/SHM files), so the baked index
 # and its directory must be owned by that user or startup fails with a
 # read-only database error.
 RUN useradd -m -u 1000 appuser \
-    && chown -R 1000:1000 /app /opt/huggingface
+    && chown -R 1000:1000 /app
 USER 1000
 
 # Hugging Face Spaces expects 7860; override with PORT elsewhere.

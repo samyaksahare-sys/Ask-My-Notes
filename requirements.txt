@@ -6,8 +6,7 @@ uvicorn[standard]
 pypdf
 langchain-text-splitters
 
-# Embeddings + vector store
-sentence-transformers
+# Vector store (embeddings come from the Gemini API)
 chromadb
 
 # LLM + config

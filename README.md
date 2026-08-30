@@ -92,14 +92,15 @@ Repeated headers and footers (slide-deck banners, running titles) are detected
 and stripped at read time — on a lecture deck they can be ~20% of all text, and
 because they are identical everywhere they flatten retrieval ranking.
 
-**Chunk size** is `CHUNK_TOKENS = 300` with 40 token overlap, automatically
-capped at what the embedding model will actually read. `all-MiniLM-L6-v2` stops
-at 256 tokens, so the effective size is 248 and ingest prints a note saying so.
-Swap `EMBED_MODEL` for one with a longer window and the full 300 applies.
+**Chunk size** is 1200 characters with 160 of overlap (~300 tokens at roughly
+4 characters per token). The Gemini embedding model accepts far more than this,
+so no cap applies.
 
-**Retrieval** embeds the query with the same model used at index time and
-returns the top-k nearest chunks with `source`, `page`, `chunk_index`, and
-`header_path`.
+**Retrieval** embeds the query with `gemini-embedding-001` (768 dimensions,
+unit-normalised) and returns the top-k nearest chunks with `source`, `page`,
+`chunk_index`, and `header_path`. Documents are embedded with task type
+`RETRIEVAL_DOCUMENT` and questions with `RETRIEVAL_QUERY` - the asymmetry is
+deliberate and improves recall.
 
 **Answering** has two paths. `/ask` always retrieves and answers in one
 request; `/chat` hands the model two tools and loops until it stops calling
@@ -195,7 +196,8 @@ All optional except the key; set in `.env`.
 | --- | --- | --- |
 | `GEMINI_API_KEY` | — | Required. From aistudio.google.com/apikey |
 | `GEMINI_MODEL` | `gemini-3.7-flash` | Any Gemini model id |
-| `EMBED_MODEL` | `all-MiniLM-L6-v2` | Any sentence-transformers model |
+| `EMBED_MODEL` | `gemini-embedding-001` | Gemini embedding model |
+| `EMBED_DIM` | `768` | Embedding width |
 | `TOP_K` | `5` | Chunks retrieved per question |
 | `CHROMA_COLLECTION` | `notes` | Collection name |
 | `DATA_DIR` / `CHROMA_DIR` | `backend/data`, `backend/chroma` | Paths |
@@ -210,7 +212,8 @@ All optional except the key; set in `.env`.
 - **Free-tier quota is 20 requests/day per model.** The agentic loop spends 2-3
   per question, so roughly 7 questions/day. `gemini-3.5-flash-lite` draws on a
   separate pool if the flagship is exhausted or returning 503s.
-- Embeddings run locally on CPU; the first ingest downloads the model (~90 MB).
+- Embeddings come from the Gemini API, so indexing consumes quota too. This
+  keeps the service at ~138 MB RAM, which fits a free tier.
 - Re-indexing a file replaces its chunks, so it is safe to repeat.
 - Scanned PDFs with no text layer yield nothing — they need OCR first.
 - Markdown notes cite as `notes.md - Section > Subsection`; PDFs cite with a

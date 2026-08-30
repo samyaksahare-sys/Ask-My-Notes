@@ -7,6 +7,7 @@ This module owns every piece of shared vector-store state so that `ingest.py`
 from __future__ import annotations
 
 import functools
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,7 +15,8 @@ from typing import Iterable, Sequence
 
 import chromadb
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
@@ -22,7 +24,12 @@ BACKEND_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("DATA_DIR", BACKEND_DIR / "data"))
 CHROMA_DIR = Path(os.getenv("CHROMA_DIR", BACKEND_DIR / "chroma"))
 COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "notes")
-EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-001")
+# Smaller than the model's native width; keeps the index compact and is ample
+# for a personal corpus. Non-default widths must be normalized (below).
+EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
+# Per-request cap. 64 is accepted; larger batches start hitting rate limits.
+EMBED_BATCH = 64
 TOP_K = int(os.getenv("TOP_K", "5"))
 
 
@@ -45,19 +52,62 @@ class Chunk:
 
 
 @functools.lru_cache(maxsize=1)
-def get_embedder() -> SentenceTransformer:
-    """Load the sentence-transformers model once per process (a few hundred MB)."""
-    return SentenceTransformer(EMBED_MODEL)
+def get_client() -> genai.Client:
+    """Gemini client, shared by embedding and answering.
+
+    Cached: a Client closes its HTTP transport when garbage collected, so a
+    throwaway client can have its connection closed mid-request.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Copy .env.example to .env and add your "
+            "key from https://aistudio.google.com/apikey"
+        )
+    return genai.Client(api_key=api_key)
 
 
-def embed(texts: Sequence[str]) -> list[list[float]]:
-    """Embed texts as unit vectors, so L2 distance ranks the same as cosine."""
-    vectors = get_embedder().encode(
-        list(texts),
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
-    return [v.tolist() for v in vectors]
+def _normalize(vector: Sequence[float]) -> list[float]:
+    """Scale to unit length so L2 distance ranks the same as cosine."""
+    length = math.sqrt(sum(v * v for v in vector))
+    return [v / length for v in vector] if length else list(vector)
+
+
+def _embed(texts: Sequence[str], task_type: str) -> list[list[float]]:
+    """Embed via the Gemini API, in batches, returned as unit vectors."""
+    out: list[list[float]] = []
+    texts = list(texts)
+    for start in range(0, len(texts), EMBED_BATCH):
+        batch = texts[start : start + EMBED_BATCH]
+        response = get_client().models.embed_content(
+            model=EMBED_MODEL,
+            contents=batch,
+            config=types.EmbedContentConfig(
+                task_type=task_type,
+                output_dimensionality=EMBED_DIM,
+            ),
+        )
+        out.extend(_normalize(e.values) for e in response.embeddings)
+    return out
+
+
+def embed_documents(texts: Sequence[str]) -> list[list[float]]:
+    """Embed passages for storage."""
+    return _embed(texts, "RETRIEVAL_DOCUMENT")
+
+
+def embed_query(text: str) -> list[float]:
+    """Embed a question.
+
+    Deliberately a different task_type from documents: the model places a
+    question and the passage that answers it nearer each other than a symmetric
+    embedding would, which measurably improves recall.
+    """
+    return _embed([text], "RETRIEVAL_QUERY")[0]
+
+
+# Back-compat alias: existing callers that embed passages.
+embed = embed_documents
 
 
 @functools.lru_cache(maxsize=1)
@@ -77,7 +127,7 @@ def retrieve(question: str, k: int = TOP_K) -> list[Chunk]:
         return []
 
     result = collection.query(
-        query_embeddings=embed([question]),
+        query_embeddings=[embed_query(question)],
         n_results=min(k, collection.count()),
         include=["documents", "metadatas", "distances"],
     )

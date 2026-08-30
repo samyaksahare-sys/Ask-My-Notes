@@ -1,58 +1,61 @@
 # Deploying the demo
 
-Single image: builds the UI, bakes a read-only demo index, serves both from one
+Single image: builds the UI, ships a prebuilt demo index, serves both from one
 FastAPI process. Same-origin, so no CORS and only one service to host.
 
 ## Why this shape
 
-Three free-tier constraints drove it:
-
 | Constraint | Resolution |
 | --- | --- |
-| ~448 MB RAM with the embedding model loaded | Host with >= 1 GB; 512 MB tiers OOM |
-| No persistent disk on free tiers | Bake the index into the image; a demo corpus is fixed, so it can be read-only |
-| Two services would need CORS and two hosts | Serve the UI from FastAPI - one service, same-origin |
+| Free tiers cap at 512 MB RAM | Embeddings come from the Gemini API, not a local model: **138 MB** steady state |
+| No persistent disk on free tiers | The demo index is committed and copied in - read-only at runtime |
+| Two services would need CORS and two hosts | FastAPI serves the built UI - one service, same-origin |
+| Build needs no secrets | The index is prebuilt, so the image builds with no API key and no network |
 
-## Hugging Face Spaces (recommended, free)
+Embedding locally with `sentence-transformers` previously cost 448 MB of RAM
+and ~1.3 GB of dependencies, which fits no free tier and would not build on a
+laptop with 11 GB free.
 
-Free CPU Spaces get 16 GB RAM and 2 vCPU, which fits comfortably, and Docker
-Spaces give full control. No card required.
+## Hosting
 
-1. Create a Space: type **Docker**, template **Blank**, visibility **Public**.
-2. In *Settings -> Variables and secrets*, add secret `GEMINI_API_KEY`.
-3. Push this repo to the Space remote:
+Any host that runs a container with >= 512 MB RAM. Both of these are free and
+need no card:
 
-   ```bash
-   git remote add space https://huggingface.co/spaces/<user>/<space>
-   git push space main
-   ```
+- **Render** - free web service, 512 MB. Cold start 30-50s after 15 min idle.
+- **Koyeb** - free instance, 512 MB. Scale-to-zero cannot be disabled.
 
-Spaces builds the root `Dockerfile` and expects port 7860, which is the default
-here. The build bakes the index and fails loudly if the corpus produces no
-chunks.
+Set `GEMINI_API_KEY` as an environment variable in the host's dashboard, and
+`PORT` if the platform injects its own (both default sensibly).
 
-## Anywhere else
+Hugging Face Spaces is **not** an option on the free plan: Docker Spaces now
+require PRO. Only Static Spaces are free.
 
-Any host that runs a container with >= 1 GB RAM works - Fly.io, Railway, Render
-(paid tiers), Cloud Run. Set `GEMINI_API_KEY`, and `PORT` if the platform
-injects its own.
+## Local
 
 ```bash
 docker build -t ask-my-notes .
 docker run -p 7860:7860 -e GEMINI_API_KEY=... ask-my-notes
 ```
 
+Needs ~2 GB of free disk for the image and build cache.
+
 ## Demo quota
 
 `RATE_LIMIT` (default 3) caps questions per visitor per `RATE_WINDOW` (default
-24h). This rations the free-tier quota; it does not create any. With 20 model
-requests/day and 2-3 per agentic question, the demo serves roughly 7 questions
-daily before returning a clear "quota exhausted" message. At the expected
-traffic of ~2 visitors/day, 3 questions each costs 12-18 requests, which fits
-inside the free tier. Raise the limit only alongside billing.
+24h). This rations the free-tier quota; it does not create any. At ~2
+visitors/day, 3 questions each costs 12-18 model requests, inside the free
+tier. Note that **embedding also consumes quota**, so re-indexing a large
+corpus is not free.
 
 ## Swapping the demo corpus
 
-`demo-notes/` is baked in at build time. Replace it with your own notes and
-rebuild. Do not add third-party copyrighted material - a public demo
-republishes whatever is in there.
+`demo-notes/` holds the source, `demo-index/` the prebuilt vectors. After
+editing the notes, regenerate the index and commit both:
+
+```bash
+DATA_DIR=$PWD/demo-notes CHROMA_DIR=$PWD/demo-index \
+  python -m backend.embed_and_store --reset
+```
+
+Do not add third-party copyrighted material - a public demo republishes
+whatever is in there.

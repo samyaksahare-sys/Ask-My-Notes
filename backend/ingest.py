@@ -22,18 +22,15 @@ from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
-from backend.retrieval import DATA_DIR, get_embedder
+from backend.retrieval import DATA_DIR
 
-# Sizes are in embedding-model tokens, not characters, so "300 tokens" means
-# what the embedder actually counts. See `_chunk_tokens` for the cap.
-CHUNK_TOKENS = 300
-OVERLAP_TOKENS = 40
-
-# Backstop so a chunk can never exceed what the embedder will read.
-TOKEN_SAFETY_MARGIN = 8
+# Sized in characters. The Gemini embedding model accepts far more than a chunk
+# this size, so there is no cap to apply; ~4 chars/token puts 1200 characters
+# at roughly the 300-token target.
+CHUNK_CHARS = 1200
+OVERLAP_CHARS = 160
 
 # Prefer paragraph breaks, then line breaks, then sentence ends, then words.
 # The empty string is the last resort: a hard cut mid-word.
@@ -252,27 +249,18 @@ def split_by_headers(text: str) -> list[Section]:
 
 
 @functools.lru_cache(maxsize=1)
-def _chunk_tokens() -> int:
-    """CHUNK_TOKENS, capped at what the embedding model will actually read.
+def get_splitter():
+    """Recursive splitter, sized in characters.
 
-    all-MiniLM-L6-v2 stops at 256 word-piece tokens; anything past that is
-    dropped at embedding time - the text would still be stored and shown to
-    the model, but would carry no weight in retrieval. Swap EMBED_MODEL for one
-    with a longer window and the full CHUNK_TOKENS applies automatically.
+    Imported lazily: langchain_text_splitters pulls in langchain-core and costs
+    ~365 MB of RSS. Chunking only happens while indexing, so the serving path
+    should never pay for it.
     """
-    limit = getattr(get_embedder(), "max_seq_length", None) or CHUNK_TOKENS
-    return min(CHUNK_TOKENS, max(64, limit - TOKEN_SAFETY_MARGIN))
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-
-@functools.lru_cache(maxsize=1)
-def get_splitter() -> RecursiveCharacterTextSplitter:
-    """Recursive splitter measuring length with the embedder's own tokenizer."""
-    size = _chunk_tokens()
-    overlap = min(OVERLAP_TOKENS, size // 4)
-    return RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
-        get_embedder().tokenizer,
-        chunk_size=size,
-        chunk_overlap=overlap,
+    return RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_CHARS,
+        chunk_overlap=OVERLAP_CHARS,
         separators=SEPARATORS,
         add_start_index=True,
         keep_separator=True,
@@ -341,13 +329,6 @@ def ingest_pdf(pdf_path: Path) -> int:
 def ingest(paths: list[Path] | None = None, reset: bool = False) -> int:
     """Ingest the given PDFs, or every PDF in data/ when none are given."""
     from backend.embed_and_store import embed_all
-
-    if _chunk_tokens() < CHUNK_TOKENS:
-        print(
-            f"Note: chunk size capped at {_chunk_tokens()} tokens "
-            f"(requested {CHUNK_TOKENS}) by the embedding model's "
-            f"{get_embedder().max_seq_length}-token limit."
-        )
 
     return embed_all(paths, reset=reset)
 
