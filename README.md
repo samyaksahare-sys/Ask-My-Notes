@@ -1,14 +1,3 @@
----
-title: Ask My Notes
-emoji: 📝
-colorFrom: gray
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: false
-short_description: RAG over your own notes, with citations back to the source
----
-
 # Ask My Notes
 
 RAG over your own notes: PDF/Markdown/text → structure-aware chunks → local
@@ -139,17 +128,19 @@ bombs (`9**9**9`, `factorial(100000)`).
 
 ## Docker
 
-Requires Docker (`brew install --cask docker`, then launch Docker.app once).
-
 ```bash
 docker compose up --build      # frontend :3000, backend :8000
 ```
 
-Note `docker compose` (subcommand), not the retired `docker-compose` binary.
+Requires Docker (`brew install colima docker docker-compose && colima start`,
+or Docker Desktop). Note `docker compose` (subcommand), not the retired
+`docker-compose` binary.
 
-Reads `GEMINI_API_KEY` from `.env`. The Chroma index lives in a named volume
-(`chroma-data`) so it survives restarts; `./backend/data` is bind-mounted, so
-notes dropped there are visible without a rebuild. Index them with:
+Two services: the backend image runs uvicorn, the frontend image builds the
+Vite bundle and serves it with nginx. `GEMINI_API_KEY` is read from `.env`. The
+Chroma index lives in a named volume (`chroma-data`) so it survives restarts,
+and `./backend/data` is bind-mounted, so notes dropped there are visible
+without a rebuild. Index them with:
 
 ```bash
 docker compose exec backend python -m backend.embed_and_store

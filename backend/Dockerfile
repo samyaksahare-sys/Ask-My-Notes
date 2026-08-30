@@ -10,10 +10,7 @@ RUN apt-get update \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    # Keep the sentence-transformers cache on a known path so the model baked
-    # in below is the one found at runtime.
-    HF_HOME=/opt/huggingface
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
@@ -21,17 +18,6 @@ WORKDIR /app
 # torch is not reinstalled on every build.
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-
-# To shrink the image substantially on x86, install CPU-only torch first --
-# the default PyPI wheel pulls ~2 GB of CUDA libraries this app never uses:
-#   RUN pip install --no-cache-dir torch \
-#       --index-url https://download.pytorch.org/whl/cpu
-
-# Bake the embedding model into the image (~90 MB). Without this the first
-# question after every fresh container stalls on a download, and the container
-# needs egress to huggingface.co to work at all.
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 
 COPY backend/ ./backend/
 

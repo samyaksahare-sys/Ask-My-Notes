@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 .env
 backend/chroma/
-# demo-index/ is intentionally committed - it is the prebuilt demo corpus.
 backend/data/*.pdf
 !backend/data/.gitkeep
 .DS_Store

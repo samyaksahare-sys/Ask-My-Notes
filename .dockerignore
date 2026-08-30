@@ -17,7 +17,7 @@ __pycache__/
 .env.*
 !.env.example
 
-# Runtime vector store: a volume, not image content. demo-index/ IS shipped.
+# Vector store: a named volume, not image content.
 backend/chroma/
 chroma/
 chroma_db/
@@ -26,20 +26,14 @@ chroma_db/
 backend/data/*
 !backend/data/.gitkeep
 
-# frontend/ IS needed by the root Dockerfile (it builds the UI), but its
-# node_modules and dist must never be copied in.
-frontend/node_modules/
-frontend/dist/
-frontend/.ssr-tmp/
+# The frontend has its own build context and image.
+frontend/
 
 # VCS, docs, editor, OS
 .git/
 .gitignore
 .github/
 *.md
-# ...but the demo corpus IS markdown and is baked into the image.
-!demo-notes/
-!demo-notes/*.md
 .vscode/
 .idea/
 .DS_Store
