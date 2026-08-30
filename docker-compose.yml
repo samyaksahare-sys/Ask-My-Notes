@@ -1,0 +1,52 @@
+# Compose reads .env in this directory automatically for ${...} substitution,
+# so GEMINI_API_KEY is picked up from the .env you already have.
+
+services:
+  backend:
+    build:
+      # Root context: the app is imported as the package `backend.main:app`.
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Fails the run with a clear message rather than starting a broken server.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY in .env}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      # The origin the browser sends is the published FRONTEND port on the
+      # host. Container names never appear in an Origin header.
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      # Named volume: the vector index survives rebuilds and restarts.
+      - chroma-data:/app/backend/chroma
+      # Bind mount: drop PDFs/markdown into ./backend/data on the host and the
+      # container sees them without a rebuild.
+      - ./backend/data:/app/backend/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # Generous: the embedding model loads into memory on the first request
+      # that touches Chroma.
+      start_period: 60s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the bundle at build time. Must be reachable from the
+        # BROWSER, which is why this is localhost and not http://backend:8000.
+        VITE_API_BASE: http://localhost:8000
+    ports:
+      # Host 3000 -> nginx 80. Port 3000 is already in the backend's default
+      # CORS allowlist, and is set explicitly above regardless.
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  chroma-data:

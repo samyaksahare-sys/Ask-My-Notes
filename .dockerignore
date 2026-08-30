@@ -1,0 +1,51 @@
+# Backend build context is the project root.
+
+# Virtualenvs and Python cruft
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets - the key is injected as an environment variable by compose,
+# never copied into the image.
+.env
+.env.*
+!.env.example
+
+# Vector store: a named volume, not image content.
+backend/chroma/
+chroma/
+chroma_db/
+
+# Your notes are bind-mounted at runtime; keep them out of the image.
+backend/data/*
+!backend/data/.gitkeep
+
+# frontend/ IS needed by the root Dockerfile (it builds the UI), but its
+# node_modules and dist must never be copied in.
+frontend/node_modules/
+frontend/dist/
+frontend/.ssr-tmp/
+
+# VCS, docs, editor, OS
+.git/
+.gitignore
+.github/
+*.md
+# ...but the demo corpus IS markdown and is baked into the image.
+!demo-notes/
+!demo-notes/*.md
+.vscode/
+.idea/
+.DS_Store
+
+# Docker files themselves
+Dockerfile
+**/Dockerfile
+.dockerignore
+docker-compose.yml

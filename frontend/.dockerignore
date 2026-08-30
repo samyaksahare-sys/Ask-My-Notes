@@ -1,0 +1,27 @@
+# Frontend build context is ./frontend.
+
+# Reinstalled by `npm ci` inside the image; copying host modules would also
+# drag in platform-specific binaries built for macOS.
+node_modules/
+
+# Built inside the image by `npm run build`.
+dist/
+.ssr-tmp/
+
+# Local env files - VITE_API_BASE is passed as a build arg instead.
+.env
+.env.*
+!.env.example
+
+# VCS, docs, editor, OS
+.git/
+.gitignore
+*.md
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Docker files themselves
+Dockerfile
+.dockerignore

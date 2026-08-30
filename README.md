@@ -1,3 +1,14 @@
+---
+title: Ask My Notes
+emoji: 📝
+colorFrom: gray
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: RAG over your own notes, with citations back to the source
+---
+
 # Ask My Notes
 
 RAG over your own notes: PDF/Markdown/text → structure-aware chunks → local
@@ -124,6 +135,27 @@ calculations are the one exception and are always allowed.
 never `eval`. 24 functions (`sqrt`, `log`, `factorial`, `comb`, `gcd`, `hypot`,
 trigonometry, …), the constants `pi`/`e`/`tau`, and guards against expression
 bombs (`9**9**9`, `factorial(100000)`).
+
+## Docker
+
+Requires Docker (`brew install --cask docker`, then launch Docker.app once).
+
+```bash
+docker compose up --build      # frontend :3000, backend :8000
+```
+
+Note `docker compose` (subcommand), not the retired `docker-compose` binary.
+
+Reads `GEMINI_API_KEY` from `.env`. The Chroma index lives in a named volume
+(`chroma-data`) so it survives restarts; `./backend/data` is bind-mounted, so
+notes dropped there are visible without a rebuild. Index them with:
+
+```bash
+docker compose exec backend python -m backend.embed_and_store
+```
+
+`VITE_API_BASE` is baked into the frontend bundle at build time and must be the
+URL the *browser* can reach (`http://localhost:8000`), not the container name.
 
 ## Retrieval eval
 
