@@ -1,0 +1,15 @@
+# Web layer
+fastapi
+uvicorn[standard]
+
+# PDF parsing + chunking
+pypdf
+langchain-text-splitters
+
+# Embeddings + vector store
+sentence-transformers
+chromadb
+
+# LLM + config
+google-genai
+python-dotenv
