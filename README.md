@@ -63,11 +63,16 @@ backend/
   agent.py           prompts, tools, Gemini calls, agentic loop
   data/              your notes (gitignored)
   chroma/            persisted vector store (gitignored)
+  Dockerfile         backend image (uvicorn)
 eval.py              retrieval accuracy harness (10 hardcoded cases)
 frontend/            Vite + React + TypeScript chat UI
   src/api.ts         typed client for POST /chat
   src/App.tsx        input box, message history, source citations, theme toggle
   src/App.css        light/dark palettes
+  Dockerfile         multi-stage: node builds, nginx serves
+  nginx.conf         SPA fallback, asset caching, gzip
+docker-compose.yml   both services, named volume, health-gated startup
+.dockerignore        one per build context (root and frontend/)
 ```
 
 ## How it works
@@ -203,8 +208,9 @@ All optional except the key; set in `.env`.
 - **Free-tier quota is 20 requests/day per model.** The agentic loop spends 2-3
   per question, so roughly 7 questions/day. `gemini-3.5-flash-lite` draws on a
   separate pool if the flagship is exhausted or returning 503s.
-- Embeddings come from the Gemini API, so indexing consumes quota too. This
-  keeps the service at ~138 MB RAM, which fits a free tier.
+- Embeddings come from the Gemini API rather than a local model, so indexing
+  consumes quota too. In exchange the service runs in ~138 MB of RAM instead of
+  ~448 MB, and the container image is ~860 MB instead of several GB.
 - Re-indexing a file replaces its chunks, so it is safe to repeat.
 - Scanned PDFs with no text layer yield nothing — they need OCR first.
 - Markdown notes cite as `notes.md - Section > Subsection`; PDFs cite with a
