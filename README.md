@@ -176,7 +176,10 @@ npm run dev      # http://localhost:5173
 ```
 
 Expects the API at `http://localhost:8000`; override with `VITE_API_BASE` in
-`frontend/.env`. Port 5173 is already in the backend's CORS allowlist.
+`frontend/.env`. Port 5173 is allowed by both the native backend's default CORS
+list and the containerised one, so `npm run dev` works against either — run
+`uvicorn` locally, or just `docker compose up -d backend` and keep Vite's
+hot-reload on the host.
 
 Answers render as markdown (headings, bold, lists, tables) and LaTeX renders as
 maths via KaTeX. A `$` before a digit is treated as currency, not a maths
